@@ -1,6 +1,5 @@
 import cv2
 import numpy as np
-import math
 import os
 
 def process_frame(frame, roi_size=64):
@@ -42,12 +41,24 @@ def process_frame(frame, roi_size=64):
 
     return selected_contour, tuple(furthest_point)
 
-def calculate_freq(prev_point, curr_point):
-    direction = np.arctan2(
-        curr_point[1] - prev_point[1], curr_point[0] - prev_point[0])
-    return direction
+def calculate_freq(prev_point, curr_point, center):
+    prev_angle = np.arctan2(
+        prev_point[1] - center[1], prev_point[0] - center[0])
+    curr_angle = np.arctan2(
+        curr_point[1] - center[1], curr_point[0] - center[0])
 
-def calculate_frequency(video_path, roi_size=64, frame_interval=20, output_fps=None):
+    angle_diff = curr_angle - prev_angle
+
+    if angle_diff > np.pi:
+        angle_diff -= 2 * np.pi
+    elif angle_diff < -np.pi:
+        angle_diff += 2 * np.pi
+
+    return angle_diff
+
+
+def calculate_frequency(
+        video_path, roi_size=64, frame_interval=20, output_fps=None):
     cap = cv2.VideoCapture(video_path)
     original_fps = int(cap.get(cv2.CAP_PROP_FPS))
     fps = output_fps if output_fps else original_fps
@@ -55,8 +66,12 @@ def calculate_frequency(video_path, roi_size=64, frame_interval=20, output_fps=N
     frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     video_name = os.path.splitext(os.path.basename(video_path))[0]
-    output_video_path = os.path.join(os.path.dirname(video_path), f"{video_name}_tracked.avi")
-    out = cv2.VideoWriter(output_video_path, cv2.VideoWriter_fourcc(*'XVID'), fps, (frame_width, frame_height))
+    center = (roi_size // 2, roi_size // 2)
+    output_video_path = os.path.join(
+        os.path.dirname(video_path), f"{video_name}_tracked.avi")
+    out = cv2.VideoWriter(
+        output_video_path, cv2.VideoWriter_fourcc(*'XVID'),
+          fps, (frame_width, frame_height))
 
     frame_count = 0
     prev_point = None
@@ -91,10 +106,10 @@ def calculate_frequency(video_path, roi_size=64, frame_interval=20, output_fps=N
 
         selected_contour, furthest_point = process_frame(frame, roi_size)
         if furthest_point is not None:
-            direction = calculate_freq(prev_point, furthest_point)
+            direction = calculate_freq(prev_point, furthest_point, center)
             
             total_angle_change += direction
-            frequencies.append(direction / (2 * math.pi) * fps)
+            frequencies.append(direction / (2 * np.pi) * fps)
 
             prev_point = furthest_point
 
@@ -107,19 +122,31 @@ def calculate_frequency(video_path, roi_size=64, frame_interval=20, output_fps=N
 
         if frame_count % frame_interval == 0:
             time_interval = frame_interval / fps
-            frequency = total_angle_change / (2 * math.pi) / time_interval
-            grouped_frequencies.append(frequency)
+            frequency_binned = total_angle_change / (2 * np.pi) / time_interval
+            grouped_frequencies.append(frequency_binned)
             total_angle_change = 0
 
     if frame_count % frame_interval != 0 and total_angle_change != 0:
         time_interval = (frame_count % frame_interval) / fps
-        frequency = total_angle_change / (2 * math.pi) / time_interval
-        grouped_frequencies.append(frequency)
+        frequency_binned = total_angle_change / (2 * np.pi) / time_interval
+        grouped_frequencies.append(frequency_binned)
 
     cap.release()
     out.release()
 
-    frequency_file_path = os.path.join(os.path.dirname(video_path), f"{video_name}_frequencies.txt")
+    if all(f > 0 for f in grouped_frequencies):
+        rotation_type = 'tracked_cw'
+    elif all(f < 0 for f in grouped_frequencies):
+        rotation_type = 'tracked_ccw'
+    else:
+        rotation_type = 'tracked_switch'
+
+    final_video_path = os.path.join(
+        os.path.dirname(video_path), f"{video_name}_{rotation_type}.avi")
+    os.rename(output_video_path, final_video_path)
+
+    frequency_file_path = os.path.join(
+        os.path.dirname(video_path), f"{video_name}_frequencies.txt")
     with open(frequency_file_path, 'w') as f:
         for freq in frequencies:
             f.write(f"{freq}\n")

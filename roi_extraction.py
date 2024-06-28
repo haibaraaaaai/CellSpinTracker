@@ -3,7 +3,8 @@ import os
 from calculate_frequency import calculate_frequency
 
 def extract_and_save_rois(
-        video_path, circles, output_folder, roi_size=64, frame_interval=20, output_fps=None):
+        video_path, circles, output_folder,
+          roi_size=64, frame_interval=20, output_fps=None):
     cap = cv2.VideoCapture(video_path)
     frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
@@ -37,7 +38,8 @@ def extract_and_save_rois(
             out.write(roi)
         out.release()
 
-        frequencies = calculate_frequency(roi_video_path, roi_size, frame_interval, fps)
+        frequencies = calculate_frequency(
+            roi_video_path, roi_size, frame_interval, fps)
         roi_frequencies.append(frequencies)
 
     cap.release()
