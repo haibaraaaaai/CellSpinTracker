@@ -1,2 +1,6 @@
-*.avi
-*.png
+# Byte-compiled / optimized / DLL files
+__pycache__/
+
+# ignore data files but keep the folder
+data/*
+!data/.gitkeep
